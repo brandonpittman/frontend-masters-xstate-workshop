@@ -1,13 +1,15 @@
-import { createMachine, assign, interpret } from 'xstate';
+import { createMachine, assign, interpret } from "xstate";
 
-const elBox = document.querySelector('#box');
+const elBox = document.querySelector("#box");
 const elBody = document.body;
-const elButton = document.querySelector('#button');
+const elButton = document.querySelector("#button");
 
 const assignPoint = assign({
   px: (context, event) => event.clientX,
   py: (context, event) => event.clientY,
 });
+
+const isAuthorized = (context) => !!context.user;
 
 const assignPosition = assign({
   x: (context, event) => {
@@ -39,8 +41,7 @@ const resetPosition = assign({
 });
 
 const dragDropMachine = createMachine({
-  // The initial state should check auth status instead.
-  initial: 'idle',
+  initial: "checkingAuth",
   context: {
     x: 0,
     y: 0,
@@ -48,17 +49,37 @@ const dragDropMachine = createMachine({
     dy: 0,
     px: 0,
     py: 0,
-    user: undefined,
+    user: null,
   },
   states: {
-    // Add two states:
-    // - checkingAuth (with transient transitions)
-    // - unauthorized
+    checkingAuth: {
+      on: {
+        "": [
+          {
+            cond: isAuthorized,
+            target: "idle",
+          },
+          {
+            target: "unauthorized",
+          },
+        ],
+      },
+    },
+    unauthorized: {
+      on: {
+        SIGN_IN: {
+          target: "checkingAuth",
+          actions: assign({
+            user: (_, e) => e.user,
+          }),
+        },
+      },
+    },
     idle: {
       on: {
         mousedown: {
           actions: assignPoint,
-          target: 'dragging',
+          target: "dragging",
         },
       },
     },
@@ -69,10 +90,10 @@ const dragDropMachine = createMachine({
         },
         mouseup: {
           actions: [assignPosition],
-          target: 'idle',
+          target: "idle",
         },
-        'keyup.escape': {
-          target: 'idle',
+        "keyup.escape": {
+          target: "idle",
           actions: resetPosition,
         },
       },
@@ -80,7 +101,7 @@ const dragDropMachine = createMachine({
   },
 });
 
-const service = interpret(dragDropMachine);
+const service = interpret(dragDropMachine).start();
 
 service.onTransition((state) => {
   elBox.dataset.state = state.value;
@@ -88,29 +109,34 @@ service.onTransition((state) => {
   if (state.changed) {
     console.log(state.context);
 
-    elBox.style.setProperty('--dx', state.context.dx);
-    elBox.style.setProperty('--dy', state.context.dy);
-    elBox.style.setProperty('--x', state.context.x);
-    elBox.style.setProperty('--y', state.context.y);
+    elBox.style.setProperty("--dx", state.context.dx);
+    elBox.style.setProperty("--dy", state.context.dy);
+    elBox.style.setProperty("--x", state.context.x);
+    elBox.style.setProperty("--y", state.context.y);
   }
 });
 
-service.start();
-
-elBox.addEventListener('mousedown', (event) => {
+elBox.addEventListener("mousedown", (event) => {
   service.send(event);
 });
 
-elBody.addEventListener('mousemove', (event) => {
+elBody.addEventListener("mousemove", (event) => {
   service.send(event);
 });
 
-elBody.addEventListener('mouseup', (event) => {
+elBody.addEventListener("mouseup", (event) => {
   service.send(event);
 });
 
-elBody.addEventListener('keyup', (e) => {
-  if (e.key === 'Escape') {
-    service.send('keyup.escape');
+elBody.addEventListener("keyup", (e) => {
+  if (e.key === "Escape") {
+    service.send("keyup.escape");
   }
+});
+
+elButton.addEventListener("click", (e) => {
+  service.send({
+    type: "SIGN_IN",
+    user: "Brandon",
+  });
 });
